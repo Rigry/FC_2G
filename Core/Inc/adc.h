@@ -1,13 +1,12 @@
 #pragma once
 
-
 #include "interrupt.h"
 #include <cmath>
 
 const uint16_t qty_point{60};
 
-enum {phase_B = 1, phase_C = 2, phase_A = 3};
-enum {V24 = 0, Trad = 1, PS = 2, HV = 3};
+enum {phase_B = 1, phase_C = 2, phase_A = 3, S = 4};
+enum {V24 = 0, Trad = 1, HV = 2};
 
 class ADC_ : TickSubscriber
 {
@@ -18,7 +17,7 @@ class ADC_ : TickSubscriber
 	uint16_t time_refresh{1};
 
 	uint16_t time{0};
-	uint16_t buffer[4];
+	uint16_t buffer[3];
 
 	int16_t arr_current_S[9]{0};
 	int16_t arr_current_A[9]{0};
@@ -29,9 +28,8 @@ class ADC_ : TickSubscriber
 	uint16_t h_voltage{0};
 	uint16_t new_hv{0};
 
-	int16_t a{0};
-	int16_t b{0};
-	int16_t c{0};
+	int16_t new_s{0};
+
 	int16_t r{0};
 	int16_t new_r{0};
 
@@ -74,20 +72,16 @@ class ADC_ : TickSubscriber
 			error_HV = true;
 		}
 		new_hv = buffer[HV];
-		//		h_voltage += (new_hv - h_voltage) * 1 / 4;
 		h_voltage = new_hv;
 	}
 
 	void adc_injected_interrupt() {
 
 		HAL_ADCEx_InjectedStop_IT (&hadc2);
+		arr_current_S[j] = HAL_ADCEx_InjectedGetValue(&hadc2, S);
 		arr_current_A[j] = HAL_ADCEx_InjectedGetValue(&hadc2, phase_A);
 		arr_current_B[j] = HAL_ADCEx_InjectedGetValue(&hadc2, phase_B);
 		arr_current_C[j] = HAL_ADCEx_InjectedGetValue(&hadc2, phase_C);
-//		new_hv           = HAL_ADCEx_InjectedGetValue(&hadc2,      HV);
-
-//		h_voltage += (new_hv - h_voltage) * 1 / 2;
-//		if(new_hv > 2200) error_HV = true;
 
 		measure = true;
 
@@ -107,9 +101,9 @@ class ADC_ : TickSubscriber
 			offset_I_B /= (9);
 			offset_I_C /= (9);
 
-			error_a = 0;
-			error_b = 0;
-			error_c = 0;
+//			error_a = 0;
+//			error_b = 0;
+//			error_c = 0;
 
 			over_current_s = 0;
 			over_current_a = 0;
@@ -123,67 +117,62 @@ class ADC_ : TickSubscriber
 			arr_B[j] = abs(arr_current_B[j] - offset_I_B);
 			arr_C[j] = abs(arr_current_C[j] - offset_I_C);
 
-			a = (arr_current_A[j] - offset_I_A) * 10 / 50;
-			c = (arr_current_C[j] - offset_I_C) * 10 / 50;
-			b = (arr_current_B[j] - offset_I_B) * 10 / 50;
+			new_s = arr_S[j] * 10 / 33;
+			a = (arr_current_A[j] - offset_I_A) * 10 / 33;
+			b = (arr_current_B[j] - offset_I_B) * 10 / 33;
+			c = (arr_current_C[j] - offset_I_C) * 10 / 33;
 
-			if (arr_A[j] <= 5 and Km_check) {
-				error_a++;
-				if (error_a > 6)
-					error = true;
-			}
+			s += (new_s - s) / 8;
 
-			if (arr_B[j] <= 5 and Km_check) {
-				error_b++;
-				if (error_b > 6)
-					error = true;
-			}
+//			if (arr_A[j] <= 5 and Km_check) {
+//				error_a++;
+//				if (error_a > 6)
+//					error = true;
+//			}
+//
+//			if (arr_B[j] <= 5 and Km_check) {
+//				error_b++;
+//				if (error_b > 6)
+//					error = true;
+//			}
+//
+//			if (arr_C[j] <= 5 and Km_check) {
+//				error_c++;
+//				if (error_c > 6)
+//					error = true;
+//			}
 
-			if (arr_C[j] <= 5 and Km_check) {
-				error_c++;
-				if (error_c > 6)
-					error = true;
-			}
-
-			if (arr_S[j] / 50 >= max_current and Km_check) {
+			if (arr_S[j] / 33 >= max_current and Km_check) {
 				over_current_s++;
-				if (over_current_s >= 4)
+				if (over_current_s >= 2)
 					over_cur_s = true;
 			}
 
-			if (arr_A[j] / 50 >= max_current_phase and Km_check) {
+			if (arr_A[j] / 33 >= max_current_phase and Km_check) {
 				over_current_a++;
 				if (over_current_a >= 3) {
-					over_cur_phase++;
 					over_current_a = 0;
-					if(over_cur_phase >= 2) {
-						over_cur_a = true;
-					}
+					over_cur_a = true;
 				}
 			}
 
-			if (arr_B[j] / 50 >= max_current_phase and Km_check) {
+			if (arr_B[j] / 33 >= max_current_phase and Km_check) {
 				over_current_b++;
 				if (over_current_b >= 3) {
-					over_cur_phase++;
 					over_current_b = 0;
-					if (over_cur_phase >= 2) {
-						over_cur_b = true;
-					}
+					over_cur_b = true;
 				}
 			}
 
-			if (arr_C[j] / 50 >= max_current_phase and Km_check) {
+			if (arr_C[j] / 33 >= max_current_phase and Km_check) {
 				over_current_c++;
 				if (over_current_c >= 3) {
-					over_cur_phase++;
 					over_current_c = 0;
-					if(over_cur_phase >= 2)
-						over_cur_c = true;
+					over_cur_c = true;
 				}
 			}
 
-			new_r = ( (std::sqrt( std::pow((a - b / 2 - c / 2), 2) + std::pow( (b * 17 / 20 - c * 17 / 20), 2) ) * 2) / 3) * 5 / 4;
+			new_r = ( (std::sqrt( std::pow((a - b / 2 - c / 2), 2) + std::pow( (b * 17 / 20 - c * 17 / 20), 2) ) * 2) / 3);
 
 			r += (new_r - r) / 4;
 		}
@@ -191,9 +180,9 @@ class ADC_ : TickSubscriber
 		if (j < 8) j++;
 		else {
 			j = 0;
-			error_a = 0;
-			error_b = 0;
-			error_c = 0;
+//			error_a = 0;
+//			error_b = 0;
+//			error_c = 0;
 			over_current_s = 0;
 			over_current_a = 0;
 			over_current_b = 0;
@@ -242,6 +231,10 @@ public:
 	int16_t offset_I_A{0};
 	int16_t offset_I_B{0};
 	int16_t offset_I_C{0};
+	int16_t s{0};
+	int16_t a{0};
+	int16_t b{0};
+	int16_t c{0};
 
 	void measure_offset() {
 		work = false;
@@ -256,7 +249,7 @@ public:
 	}
 
 	uint16_t value(uint8_t i) {
-		if (i == PS)
+		if (i == S)
 			return arr_current_S[j];
 		if (i == phase_A)
 			return arr_current_A[j];
@@ -298,7 +291,7 @@ public:
 		   time = 0;
 		   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)buffer, qty_channel);
 		}
-		if( not time % 100 and not work)
+		if(not time % 100 and not work)
 			HAL_ADCEx_InjectedStart_IT(&hadc2);
 	}
 

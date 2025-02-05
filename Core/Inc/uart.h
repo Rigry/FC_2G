@@ -18,12 +18,12 @@ public:
 
 	void transmit(){
 //		buffer.set_size(buffer_size - DMA1_Channel3->CNDTR);
-		HAL_UART_Transmit_DMA(&huart3, buffer.ptr(), buffer.size());
+//		HAL_UART_Transmit_DMA(&huart3, buffer.ptr(), buffer.size());
 		led_red = true;
 	}
 
 	void receive(){
-		HAL_UARTEx_ReceiveToIdle_DMA(&huart3, buffer.ptr(), buffer_size);
+//		HAL_UARTEx_ReceiveToIdle_DMA(&huart3, buffer.ptr(), buffer_size);
 		led_red = false;
 	}
 

@@ -44,12 +44,10 @@ ADC_HandleTypeDef hadc1;
 ADC_HandleTypeDef hadc2;
 DMA_HandleTypeDef hdma_adc1;
 
+CAN_HandleTypeDef hcan1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
-
-UART_HandleTypeDef huart3;
-DMA_HandleTypeDef hdma_usart3_tx;
-DMA_HandleTypeDef hdma_usart3_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -61,9 +59,9 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_ADC2_Init(void);
-static void MX_USART3_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_CAN1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -106,9 +104,9 @@ int main(void)
   MX_DMA_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
-  MX_USART3_UART_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
+  MX_CAN1_Init();
   /* USER CODE BEGIN 2 */
 	decltype(auto) led_red = Pin { GPIOB, led_green_Pin };
 	decltype(auto) led_can = Pin { GPIOB, led_can_Pin };
@@ -116,23 +114,27 @@ int main(void)
 	decltype(auto) unload = Pin { GPIOC, DO_unload_Pin };
 	decltype(auto) TD_DM = Pin { GPIOC, TD_DM_Pin };
 	decltype(auto) Start = Pin { GPIOC, start_Pin };
-	decltype(auto) Motor = Pin { GPIOB, type_comp_Pin };
+	decltype(auto) Asin_drive = Pin { GPIOB, sa1_Pin };
+	decltype(auto) Sin_drive = Pin { GPIOB, sa2_Pin };
+	decltype(auto) Conditioner = Pin { GPIOB, sa3_Pin };
 	decltype(auto) state = Pin { GPIOC, DO_fb_fc_Pin };
 	decltype(auto) on_off_contactor = Pin { GPIOC, DO_contactor_Pin };
 	decltype(auto) fb_contactor = Pin { GPIOC, fb_contactor_Pin };
 	decltype(auto) reset_error = Pin { GPIOB, reset_trigger_Pin };
 	decltype(auto) er_total = Pin {GPIOB, er_total_Pin};
 
-	decltype(auto) adc = ADC_ { adc_callback, adc_injected_callback, 4, 10 };
+	decltype(auto) adc = ADC_ { adc_callback, adc_injected_callback, 3, 10 };
 
-	decltype(auto) uart = UART_<> { led_can };
+//	decltype(auto) uart = UART_<> { led_can };
+	decltype(auto) can = CAN<In_id, Out_id>{led_can, interrupt_can_rx, 125};
 
 	decltype(auto) ntc = NTC { };
-	decltype(auto) service = Service<In_data, Out_data> { adc, ntc, uart, interrupt_dma, interrupt_uart };
+	decltype(auto) service = Service{adc, ntc};
 	decltype(auto) contactor = Contactor { on_off_contactor, fb_contactor };
 
-	decltype(auto) convertor = Convertor{adc, service, contactor, period_callback/*, adc_comparator_callback*/, led_red, ventilator, unload, TD_DM, Start, Motor, state, reset_error, er_total};
 
+	decltype(auto) convertor = Convertor{adc, can, service, contactor, period_callback, led_red, ventilator, unload, TD_DM, Start, Asin_drive, Sin_drive, Conditioner, state, reset_error, er_total};
+	convertor.init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -218,7 +220,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 4;
+  hadc1.Init.NbrOfConversion = 3;
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -244,16 +246,8 @@ static void MX_ADC1_Init(void)
   }
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
-  sConfig.Channel = ADC_CHANNEL_6;
-  sConfig.Rank = 3;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
   sConfig.Channel = ADC_CHANNEL_5;
-  sConfig.Rank = 4;
+  sConfig.Rank = 3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -313,7 +307,7 @@ static void MX_ADC2_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_1;
   sConfigInjected.InjectedRank = 1;
-  sConfigInjected.InjectedNbrOfConversion = 3;
+  sConfigInjected.InjectedNbrOfConversion = 4;
   sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_112CYCLES;
   sConfigInjected.ExternalTrigInjecConvEdge = ADC_EXTERNALTRIGINJECCONVEDGE_NONE;
   sConfigInjected.ExternalTrigInjecConv = ADC_INJECTED_SOFTWARE_START;
@@ -340,9 +334,71 @@ static void MX_ADC2_Init(void)
   {
     Error_Handler();
   }
+  /** Configures for the selected ADC injected channel its corresponding rank in the sequencer and its sample time
+  */
+  sConfigInjected.InjectedChannel = ADC_CHANNEL_6;
+  sConfigInjected.InjectedRank = 4;
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN ADC2_Init 2 */
 
   /* USER CODE END ADC2_Init 2 */
+
+}
+
+/**
+  * @brief CAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CAN1_Init(void)
+{
+
+  /* USER CODE BEGIN CAN1_Init 0 */
+
+  /* USER CODE END CAN1_Init 0 */
+
+  /* USER CODE BEGIN CAN1_Init 1 */
+
+  /* USER CODE END CAN1_Init 1 */
+  hcan1.Instance = CAN1;
+  hcan1.Init.Prescaler = 12;
+  hcan1.Init.Mode = CAN_MODE_NORMAL;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_4TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_5TQ;
+  hcan1.Init.TimeTriggeredMode = DISABLE;
+  hcan1.Init.AutoBusOff = DISABLE;
+  hcan1.Init.AutoWakeUp = DISABLE;
+  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.ReceiveFifoLocked = DISABLE;
+  hcan1.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&hcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN1_Init 2 */
+  CAN_FilterTypeDef canfilterconfig;
+
+      	canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
+      	canfilterconfig.FilterBank = 0;
+      	canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+      	canfilterconfig.FilterIdHigh = 0;
+      	canfilterconfig.FilterIdLow = 0;
+      	canfilterconfig.FilterMaskIdHigh = 0;
+      	canfilterconfig.FilterMaskIdLow = 0;
+      	canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
+      	canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
+      	canfilterconfig.SlaveStartFilterBank = 14; // how many filters to assign to the CAN1 (master can)
+
+      	HAL_CAN_ConfigFilter(&hcan1, &canfilterconfig);
+
+      	HAL_CAN_Start(&hcan1);
+      	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
+
+  /* USER CODE END CAN1_Init 2 */
 
 }
 
@@ -478,39 +534,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART3_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
-}
-
-/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -518,15 +541,8 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
-  __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA1_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
-  /* DMA1_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
   /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
@@ -580,8 +596,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(er_total_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : type_comp_Pin sa2_Pin sa3_Pin */
-  GPIO_InitStruct.Pin = type_comp_Pin|sa2_Pin|sa3_Pin;
+  /*Configure GPIO pins : sa1_Pin sa2_Pin sa3_Pin */
+  GPIO_InitStruct.Pin = sa1_Pin|sa2_Pin|sa3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
