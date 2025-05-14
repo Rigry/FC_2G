@@ -38,7 +38,11 @@ struct State {
 struct Error_2{
 	bool limit_time : 1;
 	bool total      : 1;
-	uint8_t         : 6;
+	bool sense_s    : 1;
+	bool sense_a    : 1;
+	bool sense_b    : 1;
+	bool sense_c    : 1;
+	uint8_t         : 2;
 };
 
 struct _ID_1 {

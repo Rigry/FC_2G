@@ -108,6 +108,10 @@ int main(void)
   MX_TIM3_Init();
   MX_CAN1_Init();
   /* USER CODE BEGIN 2 */
+  	decltype(auto) led_1 = Pin { GPIOC, LED1_Pin };
+  	decltype(auto) led_2 = Pin { GPIOC, LED2_Pin };
+  	decltype(auto) led_3 = Pin { GPIOB, LED3_Pin };
+  	decltype(auto) led_4 = Pin { GPIOB, LED4_Pin };
 	decltype(auto) led_red = Pin { GPIOB, led_green_Pin };
 	decltype(auto) led_can = Pin { GPIOB, led_can_Pin };
 	decltype(auto) ventilator = Pin { GPIOC, DO_vent_Pin };
@@ -130,10 +134,10 @@ int main(void)
 
 	decltype(auto) ntc = NTC { };
 	decltype(auto) service = Service{adc, ntc};
+	decltype(auto) error = Error_led{led_1, led_2, led_3, led_4};
 	decltype(auto) contactor = Contactor { on_off_contactor, fb_contactor };
 
-
-	decltype(auto) convertor = Convertor{adc, can, service, contactor, period_callback, led_red, ventilator, unload, TD_DM, Start, Asin_drive, Sin_drive, Conditioner, state, reset_error, er_total};
+	decltype(auto) convertor = Convertor{adc, can, service, error, contactor, period_callback, led_red, ventilator, unload, TD_DM, Start, Asin_drive, Sin_drive, Conditioner, state, reset_error, er_total};
 	convertor.init();
   /* USER CODE END 2 */
 
@@ -141,10 +145,15 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
 
-//	Timer timer{2000};
+//	Timer timer{500};
+//	uint8_t i{0};
   while (1)
   {
 	  convertor();
+//	  if(timer.event()) {
+//		  if (i > 15) i = 0;
+//		  error.set(i++);
+//	  }
 //	  reset_error ^= timer.event();
     /* USER CODE END WHILE */
 
@@ -240,6 +249,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_4;
   sConfig.Rank = 2;
+  sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -248,6 +258,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_5;
   sConfig.Rank = 3;
+  sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -565,13 +576,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, DO_vent_Pin|DO_unload_Pin|DO_fb_fc_Pin|DO_contactor_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, DO_vent_Pin|DO_unload_Pin|DO_fb_fc_Pin|DO_contactor_Pin
+                          |LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, reset_trigger_Pin|led_green_Pin|led_can_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED3_Pin|LED4_Pin|reset_trigger_Pin|led_green_Pin
+                          |led_can_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : DO_vent_Pin DO_unload_Pin DO_fb_fc_Pin DO_contactor_Pin */
-  GPIO_InitStruct.Pin = DO_vent_Pin|DO_unload_Pin|DO_fb_fc_Pin|DO_contactor_Pin;
+  /*Configure GPIO pins : DO_vent_Pin DO_unload_Pin DO_fb_fc_Pin DO_contactor_Pin
+                           LED1_Pin LED2_Pin */
+  GPIO_InitStruct.Pin = DO_vent_Pin|DO_unload_Pin|DO_fb_fc_Pin|DO_contactor_Pin
+                          |LED1_Pin|LED2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -583,8 +598,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : reset_trigger_Pin led_green_Pin led_can_Pin */
-  GPIO_InitStruct.Pin = reset_trigger_Pin|led_green_Pin|led_can_Pin;
+  /*Configure GPIO pins : LED3_Pin LED4_Pin reset_trigger_Pin led_green_Pin
+                           led_can_Pin */
+  GPIO_InitStruct.Pin = LED3_Pin|LED4_Pin|reset_trigger_Pin|led_green_Pin
+                          |led_can_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

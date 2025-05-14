@@ -46,6 +46,11 @@ class ADC_ : TickSubscriber
 	bool error_HV{false};
 	bool Km_check{false};
 
+	bool sense_s{false};
+	bool sense_a{false};
+	bool sense_b{false};
+	bool sense_c{false};
+
 	int16_t arr_S[9]{0};
 	int16_t arr_A[9]{0};
 	int16_t arr_B[9]{0};
@@ -97,9 +102,14 @@ class ADC_ : TickSubscriber
 				offset_I_C += arr_current_C[i];
 			}
 			offset_I_S /= (9);
+			sense_s = offset_I_S > 2200 or offset_I_S < 2000;
 			offset_I_A /= (9);
+			sense_a = offset_I_A > 2200 or offset_I_A < 2000;
 			offset_I_B /= (9);
+			sense_b = offset_I_B > 2200 or offset_I_B < 2000;
 			offset_I_C /= (9);
+			sense_c = offset_I_C > 2200 or offset_I_C < 2000;
+
 
 //			error_a = 0;
 //			error_b = 0;
@@ -242,6 +252,22 @@ public:
 
 	void measure_value() {
 		work = true;
+	}
+
+	bool error_sense_s() {
+		return sense_s;
+	}
+
+	bool error_sense_a() {
+		return sense_a;
+	}
+
+	bool error_sense_b() {
+		return sense_b;
+	}
+
+	bool error_sense_c() {
+		return sense_c;
 	}
 
 	uint16_t operator[](uint8_t i) {

@@ -1,11 +1,14 @@
 #pragma once
 
+#include <algorithm>
+
 #include "adc.h"
 #include "service.h"
 #include "can.h"
 #include "contactor.h"
 #include "interrupt.h"
 #include "pin.h"
+#include "led_digit.h"
 
 class Convertor {
 	enum State {wait, starting} state{wait};
@@ -13,6 +16,7 @@ class Convertor {
 	ADC_& adc;
 	CAN<In_id, Out_id>& can;
 	Service& service;
+	Error_led error_led;
 	Contactor& contactor;
 	Interrupt& period_callback;
 	Pin& led_red;
@@ -38,12 +42,20 @@ class Convertor {
 	Timer timer_stop;
 	Timer clump_timer;
 
-	const uint16_t sin_table[qty_point]{ 6000,  7054,  8029,  8917,  9708, 10392, 10963, 11412, 11737, 11934
-									  , 11999, 11934, 11737, 11412, 10963, 10392, 10963, 11412, 11737, 11934
-									  , 11999, 11934, 11737, 11412, 10963, 10392,  9708,  8917,  8029,  7054
-									  ,  6000,  4880,  3708,  2495,  1255,     0,     0,     0,     0,     0
-									  ,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0
-									  ,     0,     0,     0,     0,     0,     0,  1255,  2495,  3708,  4880
+//	const uint16_t sin_table[qty_point]{ 5976,  7025,  7997,  8882,  9669, 10350, 10918, 11367, 11690, 11886
+//									  , 11951, 11886, 11690, 11367, 10918, 10350, 10918, 11367, 11690, 11886
+//									  , 11951, 11886, 11690, 11367, 10918, 10350,  9669,  8882,  7997,  7025
+//									  ,  5976,  4861,  3693,  2485,  1249,     0,     0,     0,     0,     0
+//									  ,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0
+//									  ,     0,     0,     0,     0,     0,     0,  1249,  2485,  3693,  4861
+//									  };
+
+	const uint16_t sin_table[qty_point]{  6900,  7621,  8335,  9032,  9706, 10350, 10956, 11517, 12028, 12482
+									   , 12875, 13203, 13462, 13649, 13762, 13800, 13762, 13649, 13462, 13203
+									   , 12875, 12482, 12027, 11517, 10955, 10350,  9706,  9032,  8334,  7621
+									   ,  6900,  6178,  5465,  4767,  4093,  3450,  2844,  2282,  1772,  1317
+									   ,   924,   597,   338,   151,    38,     0,    38,   151,   338,   597
+									   ,   924,  1317,  1772,  2282,  2844,  3450,  4093,  4767,  5465,  6178
 									  };
 
 	uint8_t r{0};
@@ -66,7 +78,10 @@ class Convertor {
 	uint8_t error_F{0};
 	uint16_t min_ARR{360};
 	uint16_t value_ARR{380};
-	uint16_t ARR_ASIN{1999};
+	uint16_t ARR_ASIN{1999}; //1999 50Hz //1666 60Hz
+	uint16_t ARR_CONDIT{1333};
+
+	uint16_t min_ccr{0};
 
 	bool enable{true};
 	bool phase{false};
@@ -92,30 +107,39 @@ class Convertor {
 
 	void period_interrupt(){
 
-		if (Km >= 990) {
-			Km = 990;
+		min_ccr = std::min( sin_table[m], std::min(sin_table[k], sin_table[n]) );
+
+		if(condition) {
+			if (Km >= 750) {
+				Km = 750;
+			}
+		} else {
+			if (Km >= 990) {
+				Km = 990;
+			}
 		}
 
-		TIM1->CCR1 = Km * sin_table[m++] / 1000;
-		TIM1->CCR2 = Km * sin_table[k++] / 1000;
-		TIM1->CCR3 = Km * sin_table[n++] / 1000;
+		TIM1->CCR1 = Km * (sin_table[m++] - min_ccr) / 1000;
+		TIM1->CCR2 = Km * (sin_table[k++] - min_ccr) / 1000;
+		TIM1->CCR3 = Km * (sin_table[n++] - min_ccr) / 1000;
 
 		if (k >= qty_point) {k = 0;}
 		if (m >= qty_point) {m = 0;}
 		if (n >= qty_point) {n = 0;}
 
-		switcher ^= 1;
+//		switcher ^= 1;
 
-		if(switcher) HAL_ADCEx_InjectedStart_IT(&hadc2);
+//		if(switcher)
+			HAL_ADCEx_InjectedStart_IT(&hadc2);
 
 	}
 
 public:
 
-	Convertor(ADC_& adc, CAN<In_id, Out_id>& can, Service& service, Contactor& contactor, Interrupt& period_callback
+	Convertor(ADC_& adc, CAN<In_id, Out_id>& can, Service& service, Error_led error_led, Contactor& contactor, Interrupt& period_callback
 			, Pin& led_red,  Pin& ventilator, Pin& unload, Pin& TD_DM,Pin& Start, Pin& Asin_drive, Pin& Sin_drive
 			, Pin& Conditioner, Pin& state_fc, Pin& reset_error, Pin& er_total)
-	: adc{adc}, can {can}, service{service}, contactor{contactor}, period_callback{period_callback}
+	: adc{adc}, can {can}, service{service}, error_led{error_led}, contactor{contactor}, period_callback{period_callback}
 	, led_red{led_red}, ventilator{ventilator}, unload{unload}, TD_DM{TD_DM}, Start{Start}, Asin_drive{Asin_drive}
 	, Sin_drive{Sin_drive}, Conditioner {Conditioner}, state_fc{state_fc}, reset_error{reset_error}, er_total{er_total}
 	{}
@@ -134,6 +158,36 @@ public:
 
 	void operator() (){
 
+		if(can.outID.id_2.error.current_S) {
+			error_led.set(1);
+		} else if (can.outID.id_2.error.current_A) {
+			error_led.set(2);
+		} else if (can.outID.id_2.error.current_B) {
+			error_led.set(3);
+		} else if (can.outID.id_2.error.current_C) {
+			error_led.set(4);
+		} else if (can.outID.id_2.error.over_HV) {
+			error_led.set(5);
+		} else if (U_stop) {
+			error_led.set(6);
+		} else if (can.outID.id_2.state.voltage_board_low) {
+			error_led.set(7);
+		} else if (can.outID.id_2.state.voltage_board_high) {
+			error_led.set(8);
+		} else if (can.outID.id_2.error.overheat_fc) {
+			error_led.set(9);
+		} else if (can.outID.id_2.error.overheat_c) {
+			error_led.set(10);
+		} else if (can.outID.id_1.error_2.sense_s) {
+			error_led.set(11);
+		} else if (can.outID.id_1.error_2.sense_a) {
+			error_led.set(12);
+		} else if (can.outID.id_1.error_2.sense_b) {
+			error_led.set(13);
+		} else if (can.outID.id_1.error_2.sense_c) {
+			error_led.set(14);
+		}
+
 		service();
 
 		can.outID.id_1.ARR = TIM3->ARR;
@@ -148,7 +202,7 @@ public:
 		can.outID.id_2.current_drive = service.current_drive;
 
 		can.outID.id_2.error.over_HV = (service.high_voltage > 900);
-		can.outID.id_2.error.overheat_c = not bool(TD_DM);
+		can.outID.id_2.error.overheat_c = (not bool(TD_DM) and not condition);
 
 		can.outID.id_2.state.HV_low = U_stop;
 		can.outID.id_2.state.contactor = contactor.is_on();
@@ -161,8 +215,12 @@ public:
 		can.outID.id_2.state.conditioner = condition;
 
 		can.outID.id_1.error_2.total = er_total;
+		can.outID.id_1.error_2.sense_s = adc.error_sense_s();
+		can.outID.id_1.error_2.sense_a = adc.error_sense_a();
+		can.outID.id_1.error_2.sense_b = adc.error_sense_b();
+		can.outID.id_1.error_2.sense_c = adc.error_sense_c();
 
-		if(service.high_voltage <= 340) U_stop = true;
+		if(service.high_voltage <= 340) {U_stop = true;}
 		else if(service.high_voltage > 350) {U_stop = false; adc.reset_error_HV();}
 
 		if (can.outID.id_2.error.overheat_fc |= service.convertor_temp >= 75) {
@@ -175,11 +233,11 @@ public:
 		case wait:
 			if(asinchron) {
 				adc.set_max_current(10);
-				adc.set_max_current_phase(16);
+				adc.set_max_current_phase(22);
 				unload = false;
 				if (service.high_voltage > 340 and service.high_voltage < 520) {
 					U_phase_max = ((((service.high_voltage / 20) * 990) / 141) * 115) / 100;
-					min_ARR = (div_f / ((U_phase_max) * 5)) * 22; // 5/22 = 50/220
+					min_ARR = (div_f / ((U_phase_max) * 5)) * 22; // 5/22 = 50/220 6\22 = 60\220
 					if(min_ARR <= ARR_ASIN) min_ARR = ARR_ASIN;
 				} else {
 					U_phase_max = 110;
@@ -199,10 +257,21 @@ public:
 					U_phase_max = 212;
 					min_ARR = value_ARR;
 				}
+			} else if (condition){
+				adc.set_max_current(22);
+				adc.set_max_current_phase(24);
+				if (service.high_voltage > 340 and service.high_voltage < 400) {
+					U_phase_max = ((((service.high_voltage / 20) * 990) / 141) * 112) / 100;
+					min_ARR = (div_f / ((U_phase_max) * 9)) * 22; // 5/22 = 50/220
+					if(min_ARR <= ARR_CONDIT) min_ARR = ARR_CONDIT;
+				} else {
+					U_phase_max = 180;
+					min_ARR = ARR_CONDIT;
+				}
 			}
 			enable = Start
 			 and not rerun.isCount() and not rest.isCount()
-			 and not can.outID.id_2.error.overheat_fc and not can.outID.id_2.error.overheat_c
+			 and not can.outID.id_2.error.overheat_fc and (not can.outID.id_2.error.overheat_c or condition)
 			 and not can.outID.id_2.state.HV_low
 			 and not can.outID.id_2.state.voltage_board_low and not can.outID.id_2.state.voltage_board_high
 			 and not U_stop and not er_total
@@ -245,16 +314,19 @@ public:
 				}
 
 				U_phase = ((((service.high_voltage / 20) * Km) / 141) * 112) / 100; // 31 = 620 / 20; 141 = sqrt(2) * 100; 115 = добавочный
-				Km = offset + (Kp * (div_f / TIM3->ARR) / (service.high_voltage + 1) );
+				if (Kp > 10200) {
+					Kp = 10200;
+				}
+				if(service.high_voltage > 300) {
+					Km = offset + (Kp * (div_f / TIM3->ARR) / (service.high_voltage) );
+				}
 
 				if (TIM3->ARR <= uint32_t(min_ARR + 5)) {
 					unload = true;
 					error = 0;
 				}
 
-				if (Kp > 10200) {
-					Kp = 10200;
-				}
+
 
 				if (TIM3->ARR <= min_ARR) {
 			//		if (U_phase - U_phase_max > 10) {
@@ -264,16 +336,16 @@ public:
 			//			Kp++;
 			//		}
 
-					if (adc.current() > 160) {
-						if (Kp > 8000) {
-							Kp -= 4;
+					if (adc.current() > 170) {
+						if (Kp > 9000) {
+							Kp -= 3;
 						}
 					}
 				}
 
 				if (adc.current() < 70) {
 					if (Kp < 10000) {
-						Kp+=3;
+						Kp+=4;
 					}
 				}
 
@@ -290,7 +362,7 @@ public:
 						if (Kp >= 10000) {
 							Kp--;
 						}
-						if (Kp <= 8000) {
+						if (Kp <= 9000) {
 							Kp++;
 						}
 					}
@@ -349,17 +421,72 @@ public:
 					Kp = 2200;
 				}
 
-			} //else if(motor == SYNCHRON) {
+			} else if(condition) {
+				if (service.high_voltage > 300 and service.high_voltage < 400) {
+					U_phase_max = ((((service.high_voltage / 20) * 990) / 141) * 115) / 100;
+					min_ARR = (div_f / ((U_phase_max) * 9)) * 22; // 5/22 = 50/220
+					if(min_ARR <= ARR_CONDIT) min_ARR = ARR_CONDIT;
+				} else {
+					U_phase_max = 180;
+					min_ARR = ARR_CONDIT;
+				}
 
-			if (Km >= 990) {
-				Km = 990;
+				//	U_phase = ((((service.outData.high_voltage / 20) * Km) / 141) * 112) / 100; // 31 = 620 / 20; 141 = sqrt(2) * 100; 115 = добавочный
+				Km = offset + ( ((Kp * (div_f / TIM3->ARR) / (service.high_voltage))) );
+
+				if (TIM3->ARR <= uint32_t(min_ARR + 10)) {
+					error = 0;
+				}
+
+				if (Kp >= 5500) {
+					Kp = 5500;
+				}
+
+				if (TIM3->ARR <= min_ARR) {
+				//		if (U_phase - U_phase_max > 10) {
+				//			Kp--;
+				//		} else {
+				//			if((U_phase_max - U_phase > 10))
+				//				Kp++;
+				//		}
+
+					if (adc.current() > 180) {
+						if (Kp > 4500) {
+							Kp -= 4;
+						}
+					}
+				}
+
+				if (adc.current() < 140) {
+					if (Kp < 5500) {
+						Kp++;
+					}
+				}
+
+				if (TIM3->ARR > uint32_t(min_ARR + 5)) {
+					if (adc.current() > 100) {
+						if (Kp >= 5000) {
+							Kp--;
+						}
+					}
+				}
+			}
+
+			if (condition) {
+				if (Km >= 750) {
+					Km = 750;
+				}
+			} else {
+				if (Km >= 990) {
+					Km = 990;
+				}
 			}
 
 			if (timer.done()) {
 				timer.stop();
 				timer.start(time);
 
-				if(asinchron) {
+				if(asinchron or condition) {
 
 					if (TIM3->ARR != min_ARR) {
 						if (TIM3->ARR > uint16_t(4000)) {
@@ -408,16 +535,21 @@ public:
 	void pusk() {
 
 		if(asinchron) {
-				frequency = 3;
-				Kp = 1200;
-				time = 2;
-				offset = 60;
-
-		} else if(sinchron) {
-				frequency = 5;
-				Kp = 1140;
-				time = 2;
-				offset = 40;
+			frequency = 4;
+			Kp = 1150;
+			time = 2;
+			offset = 60;
+		} else if (sinchron) {
+			frequency = 5;
+			Kp = 1140;
+			time = 2;
+			offset = 40;
+		} else if (condition) {
+			frequency = 5;
+			Kp = 2500;
+			time = 3;
+			offset = 10;
+			Km = 5;
 		}
 		Km = 5;
 		TIM3->ARR = (div_f / (frequency)) - 1;
@@ -447,8 +579,8 @@ public:
 			unload = true;
 
 		reset_error = true;
-
-		work.start(600'000);
+		if(asinchron or sinchron) work.start(600'000);
+		error_led.reset();
 	}
 
 	void stop() {
@@ -482,7 +614,7 @@ public:
 		if((not Start or timer_stop.done())
 				      or er_total
 				      or not contactor.is_on()
-				      or can.outID.id_2.error.overheat_fc or can.outID.id_2.error.overheat_c
+				      or can.outID.id_2.error.overheat_fc /*or can.outID.id_2.error.overheat_c*/
 					  or can.outID.id_2.state.HV_low
 					  or can.outID.id_2.state.voltage_board_low or can.outID.id_2.state.voltage_board_high
 		) {
@@ -507,13 +639,13 @@ public:
 
 			if(not contactor.is_on()
 			    or er_total
-				or can.outID.id_2.error.overheat_fc or can.outID.id_2.error.overheat_c
+				or can.outID.id_2.error.overheat_fc /*or can.outID.id_2.error.overheat_c*/
 				or can.outID.id_2.state.HV_low
 				or can.outID.id_2.state.voltage_board_low or can.outID.id_2.state.voltage_board_high
 			) {
 				stop();
 				timer_stop.stop();
-				rerun.start(10000);
+				rerun.start(5'000);
 				led_red = true;
 				if (sinchron) {
 					unload = true;
@@ -522,7 +654,7 @@ public:
 			}
 
 		}
-
+if (asinchron or sinchron) {
 		if (work.done() and state == starting) {
 			can.outID.id_1.error_2.limit_time = true;
 			stop();
@@ -532,6 +664,7 @@ public:
 			}
 			rest.start(240'000);
 		}
+}
 //if(motor == SYNCHRON) {
 //
 //	if (TIM3->ARR >= (min_ARR + 5)) {
@@ -556,7 +689,7 @@ public:
 			adc.reset_error_HV();
 			led_red = true;
 			can.outID.id_2.error.over_HV = true;
-			rerun.start(10000);
+			rerun.start(5000);
 			if (sinchron) {
 				unload = true;
 				clump_timer.start(15000);
@@ -568,7 +701,7 @@ public:
 			adc.reset_over_s();
 			led_red = true;
 			can.outID.id_2.error.current_S = true;
-			rerun.start(10000);
+			rerun.start(5000);
 			if (sinchron) {
 				unload = true;
 				clump_timer.start(15000);
@@ -580,7 +713,7 @@ public:
 			adc.reset_over_a();
 			led_red = true;
 			can.outID.id_2.error.current_A = true;
-			rerun.start(10000);
+			rerun.start(5000);
 			if (sinchron) {
 				unload = true;
 				clump_timer.start(15000);
@@ -592,7 +725,7 @@ public:
 			adc.reset_over_b();
 			led_red = true;
 			can.outID.id_2.error.current_B = true;
-			rerun.start(10000);
+			rerun.start(5000);
 			if (sinchron) {
 				unload = true;
 				clump_timer.start(15000);
@@ -604,7 +737,7 @@ public:
 			adc.reset_over_c();
 			led_red = true;
 			can.outID.id_2.error.current_C = true;
-			rerun.start(10000);
+			rerun.start(5000);
 			if (sinchron) {
 				unload = true;
 				clump_timer.start(15000);
